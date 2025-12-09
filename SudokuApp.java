@@ -1,6 +1,4 @@
-// SudokuApp.java
-// Updated UI to include undo/redo buttons in menu.
-// Simplified event handling, integrated with BoardModel, GameGenerator, and UndoManager.
+
 
 import javafx.application.Application;
 import javafx.application.Platform;
@@ -15,9 +13,12 @@ public class SudokuApp extends Application {
     private final GameGenerator generator = new GameGenerator(new Solver());
     private final UndoManager undoManager = new UndoManager();
     private final CellPane[] cells = new CellPane[81];
+    private int invalidCount = 0; // Counter for invalid moves (DSA: Simple state variable for limiting attempts)
+    private Stage primaryStage;
 
     @Override
     public void start(Stage primaryStage) {
+        this.primaryStage = primaryStage;
         primaryStage.setTitle("Sudoku (JavaFX)");
         BorderPane root = new BorderPane();
         MenuBar menuBar = buildMenu(primaryStage);
@@ -58,10 +59,13 @@ public class SudokuApp extends Application {
         newGame.setOnAction(e -> {
             generator.generateNew(boardModel);
             undoManager.clear();
+            invalidCount = 0; // Reset counter on new game
             refreshUI();
         });
         showAnswer.setOnAction(e -> {
+            int[][] oldPuzzle = boardModel.getPuzzleCopy();
             boardModel.revealSolution();
+            undoManager.recordBulk(oldPuzzle, boardModel.getPuzzle());
             refreshUI();
         });
         undo.setOnAction(e -> {
@@ -86,6 +90,7 @@ public class SudokuApp extends Application {
                     boardModel.setNumberOfEmptyCells(n);
                     generator.generateNew(boardModel);
                     undoManager.clear();
+                    invalidCount = 0; // Reset counter
                     refreshUI();
                 } catch (NumberFormatException ex) {
                     Alert a = new Alert(Alert.AlertType.ERROR, "Invalid number");
@@ -114,7 +119,13 @@ public class SudokuApp extends Application {
                 }
                 boolean ok = boardModel.placeNumber(r, c, v, undoManager);
                 if (!ok) {
+                    invalidCount++; // Increment on invalid (DSA: Conditional counter update)
                     showAlert("Invalid placement: violates Sudoku rules.");
+                    if (invalidCount >= 4) {
+                        Alert endAlert = new Alert(Alert.AlertType.INFORMATION, "Game ended");
+                        endAlert.showAndWait();
+                        primaryStage.close(); // End the game by closing the window
+                    }
                 } else {
                     refreshUI();
                     if (boardModel.isSolved()) {
