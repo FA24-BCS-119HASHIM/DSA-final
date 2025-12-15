@@ -1,33 +1,107 @@
-
-
 import javafx.application.Application;
 import javafx.application.Platform;
 import javafx.geometry.Insets;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
 import javafx.scene.layout.*;
+import javafx.scene.paint.Color;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import javafx.stage.Stage;
 
 public class SudokuApp extends Application {
+    // Game dependencies
     private final BoardModel boardModel = new BoardModel();
     private final GameGenerator generator = new GameGenerator(new Solver());
     private final UndoManager undoManager = new UndoManager();
     private final CellPane[] cells = new CellPane[81];
-    private int invalidCount = 0; // Counter for invalid moves (DSA: Simple state variable for limiting attempts)
+    private int invalidCount = 0;
     private Stage primaryStage;
 
     @Override
     public void start(Stage primaryStage) {
         this.primaryStage = primaryStage;
-        primaryStage.setTitle("Sudoku (JavaFX)");
+        primaryStage.setTitle("Sudoku Master");
+
+        // Start the application by showing the main menu
+        showStartMenu();
+
+        primaryStage.show();
+    }
+
+    public static void main(String[] args) {
+        launch(args);
+    }
+
+    // =======================================================
+    // I. START MENU AND UI UTILITIES
+    // =======================================================
+
+    /**
+     * Creates and displays the beautiful welcome screen.
+     */
+    private void showStartMenu() {
+        VBox root = new VBox(20);
+        root.setAlignment(Pos.CENTER);
+
+        // Styling: Gradient background
+        root.setStyle("-fx-background-color: linear-gradient(to bottom right, #2c3e50, #4ca1af);");
+
+        Label titleLabel = new Label("SUDOKU");
+        titleLabel.setTextFill(Color.WHITE);
+        titleLabel.setFont(Font.font("Verdana", FontWeight.BOLD, 50));
+
+        Button btnStart = new Button("START GAME");
+        styleButton(btnStart);
+        btnStart.setOnAction(e -> startGame());
+
+        Button btnExit = new Button("END GAME");
+        styleButton(btnExit);
+        btnExit.setOnAction(e -> Platform.exit());
+
+        root.getChildren().addAll(titleLabel, btnStart, btnExit);
+
+        // Set the primary stage to show the menu
+        Scene menuScene = new Scene(root, 600, 600);
+        primaryStage.setScene(menuScene);
+        primaryStage.sizeToScene();
+    }
+
+    private void styleButton(Button btn) {
+        btn.setPrefWidth(200);
+        btn.setPrefHeight(50);
+        btn.setStyle(
+                "-fx-background-color: #ecf0f1; " +
+                        "-fx-text-fill: #2c3e50; " +
+                        "-fx-font-size: 18px; " +
+                        "-fx-font-weight: bold; " +
+                        "-fx-background-radius: 10;"
+        );
+        // Simple hover effect
+        btn.setOnMouseEntered(e -> btn.setStyle("-fx-background-color: #bdc3c7; -fx-text-fill: #2c3e50; -fx-font-size: 18px; -fx-font-weight: bold; -fx-background-radius: 10;"));
+        btn.setOnMouseExited(e -> btn.setStyle("-fx-background-color: #ecf0f1; -fx-text-fill: #2c3e50; -fx-font-size: 18px; -fx-font-weight: bold; -fx-background-radius: 10;"));
+    }
+
+    // =======================================================
+    // II. GAME INITIALIZATION AND UI BUILDING
+    // =======================================================
+
+    /**
+     * Switches from the Menu to the actual Sudoku game board.
+     */
+    private void startGame() {
         BorderPane root = new BorderPane();
         MenuBar menuBar = buildMenu(primaryStage);
         root.setTop(menuBar);
 
         GridPane grid = new GridPane();
+        grid.setAlignment(Pos.CENTER);
         grid.setHgap(2);
         grid.setVgap(2);
         grid.setPadding(new Insets(10));
+        grid.setStyle("-fx-background-color: #34495e; -fx-padding: 10;");
+
         for (int i = 0; i < 81; i++) {
             int r = i / 9;
             int c = i % 9;
@@ -39,14 +113,15 @@ public class SudokuApp extends Application {
         }
 
         root.setCenter(grid);
-        Scene scene = new Scene(root, 9 * 66 + 40, 9 * 66 + 120);
-        primaryStage.setScene(scene);
+
+        // Calculate size based on 64x64 cell size + padding/gaps
+        Scene gameScene = new Scene(root, 9 * 66 + 40, 9 * 66 + 120);
+        primaryStage.setScene(gameScene);
+        primaryStage.sizeToScene();
 
         generator.generateNew(boardModel);
         undoManager.clear();
         refreshUI();
-
-        primaryStage.show();
     }
 
     private MenuBar buildMenu(Stage owner) {
@@ -56,10 +131,12 @@ public class SudokuApp extends Application {
         MenuItem showAnswer = new MenuItem("Show Answer");
         MenuItem undo = new MenuItem("Undo");
         MenuItem redo = new MenuItem("Redo");
+        MenuItem exitToMenu = new MenuItem("Exit to Main Menu");
+
         newGame.setOnAction(e -> {
             generator.generateNew(boardModel);
             undoManager.clear();
-            invalidCount = 0; // Reset counter on new game
+            invalidCount = 0;
             refreshUI();
         });
         showAnswer.setOnAction(e -> {
@@ -76,12 +153,14 @@ public class SudokuApp extends Application {
             undoManager.redo(boardModel.getPuzzle());
             refreshUI();
         });
-        game.getItems().addAll(newGame, showAnswer, undo, redo);
+        exitToMenu.setOnAction(e -> showStartMenu()); // Action to return to main menu
+
+        game.getItems().addAll(newGame, showAnswer, undo, redo, new SeparatorMenuItem(), exitToMenu);
 
         Menu settings = new Menu("Settings");
-        MenuItem changeEmpty = new MenuItem("Change Number of Empty Cells");
+        MenuItem changeEmpty = new MenuItem("Change Difficulty (Empty Cells)");
         changeEmpty.setOnAction(e -> {
-            TextInputDialog dialog = new TextInputDialog(Integer.toString(20));
+            TextInputDialog dialog = new TextInputDialog(Integer.toString(boardModel.getNumberOfEmptyCells()));
             dialog.initOwner(owner);
             dialog.setHeaderText("Enter number of empty cells (1-81):");
             dialog.showAndWait().ifPresent(s -> {
@@ -90,12 +169,10 @@ public class SudokuApp extends Application {
                     boardModel.setNumberOfEmptyCells(n);
                     generator.generateNew(boardModel);
                     undoManager.clear();
-                    invalidCount = 0; // Reset counter
+                    invalidCount = 0;
                     refreshUI();
                 } catch (NumberFormatException ex) {
-                    Alert a = new Alert(Alert.AlertType.ERROR, "Invalid number");
-                    a.initOwner(owner);
-                    a.showAndWait();
+                    showAlert("Invalid number");
                 }
             });
         });
@@ -104,6 +181,10 @@ public class SudokuApp extends Application {
         mb.getMenus().addAll(game, settings);
         return mb;
     }
+
+    // =======================================================
+    // III. GAMEPLAY AND STATUS UPDATES
+    // =======================================================
 
     private void onCellClicked(int index) {
         int r = index / 9;
@@ -119,12 +200,12 @@ public class SudokuApp extends Application {
                 }
                 boolean ok = boardModel.placeNumber(r, c, v, undoManager);
                 if (!ok) {
-                    invalidCount++; // Increment on invalid (DSA: Conditional counter update)
+                    invalidCount++;
                     showAlert("Invalid placement: violates Sudoku rules.");
                     if (invalidCount >= 4) {
-                        Alert endAlert = new Alert(Alert.AlertType.INFORMATION, "Game ended");
+                        Alert endAlert = new Alert(Alert.AlertType.INFORMATION, "Game Over! Too many mistakes.");
                         endAlert.showAndWait();
-                        primaryStage.close(); // End the game by closing the window
+                        showStartMenu(); // Return to menu on loss
                     }
                 } else {
                     refreshUI();
@@ -146,6 +227,7 @@ public class SudokuApp extends Application {
 
     private void refreshUI() {
         int[][] p = boardModel.getPuzzleCopy();
+        // Use Platform.runLater to ensure UI updates are handled safely on the JavaFX thread
         Platform.runLater(() -> {
             for (int i = 0; i < 81; i++) {
                 int r = i / 9;
@@ -154,8 +236,4 @@ public class SudokuApp extends Application {
             }
         });
     }
-
-    public static void main(String[] args) {
-        launch(args);
-    }
-}
+            }
